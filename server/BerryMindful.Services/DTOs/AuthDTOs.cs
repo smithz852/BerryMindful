@@ -10,6 +10,14 @@ public record LoginRequest(
     [Required, EmailAddress] string Email,
     [Required] string Password);
 
+public record ForgotPasswordRequest(
+    [Required, EmailAddress] string Email);
+
+public record ResetPasswordRequest(
+    [Required, EmailAddress] string Email,
+    [Required] string Token,
+    [Required, MinLength(8)] string NewPassword);
+
 public record UserDto(string Id, string Email, bool NotificationsEnabled);
 
 public record AuthResponse(string AccessToken, UserDto User);
