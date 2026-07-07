@@ -62,6 +62,11 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
           <a href="/login">Already registered? Log in</a>
         )}
       </p>
+      {mode === "login" && (
+        <p>
+          <a href="/forgot-password">Forgot password?</a>
+        </p>
+      )}
     </main>
   );
 }

@@ -2,6 +2,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { AuthPage } from "./pages/AuthPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { PantryPage } from "./pages/PantryPage";
 import { ScanPage } from "./pages/ScanPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
@@ -22,6 +24,8 @@ function App() {
       <Routes>
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/signup" element={<AuthPage mode="signup" />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route
           path="/pantry"
           element={

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using BerryMindful.Api.Middleware;
 using BerryMindful.Api.Workers;
 using BerryMindful.Data;
 using BerryMindful.Data.Entities;
@@ -40,6 +41,11 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddEntityFrameworkStores<AppDbContext>()
     .AddSignInManager()
     .AddDefaultTokenProviders();
+
+// Password-reset (and other data-protection) tokens expire after 1 hour, matching
+// the copy in the reset email.
+builder.Services.Configure<DataProtectionTokenProviderOptions>(o =>
+    o.TokenLifespan = TimeSpan.FromHours(1));
 
 builder.Services.AddMemoryCache();
 
@@ -157,6 +163,17 @@ builder.Services.AddRateLimiter(o =>
             PermitLimit = 10,
         }));
 
+    // Forgot/reset password: 3/hour per targeted email (extracted by
+    // RateLimitKeyMiddleware; falls back to IP when the body has no email)
+    o.AddPolicy("password", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Items[RateLimitKeyMiddleware.EmailItemKey] as string
+            ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromHours(1),
+            PermitLimit = 3,
+        }));
+
     // Receipt scans: 20/hour per user — the only endpoint with Vision + Claude costs
     o.AddPolicy("scan", context => RateLimitPartition.GetFixedWindowLimiter(
         context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
@@ -199,6 +216,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors("client");
 app.UseAuthentication();
+app.UseMiddleware<RateLimitKeyMiddleware>();
 app.UseRateLimiter();
 app.UseAuthorization();
 

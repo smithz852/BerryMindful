@@ -4,12 +4,12 @@
 BerryMindful is a grocery tracking web app whose primary goal is reducing food waste. The core insight: most food spoils because people forget what they bought and when. The app solves this by making item entry nearly effortless via receipt scanning, then proactively alerting users as items approach their expiry window.
 
 ## Status (as of 2026-07-06)
-Phase 1 is **complete and fully live-verified** (2026-07-07): all three API keys set, Vision + Claude pipeline tested on real receipts (incl. purchase-date extraction), and the Resend expiry digest delivered + deduped for real. Next up: the forgot/reset-password flow (branch `liveTestingAndPwFlow`), then the rest of early Phase 2. Reminder: Resend's sandbox sender (`onboarding@resend.dev`) only delivers to the Resend account owner's address — verify a domain before emailing other users.
+Phase 1 is **complete and fully live-verified** (2026-07-07): all three API keys set, Vision + Claude pipeline tested on real receipts (incl. purchase-date extraction), and the Resend expiry digest delivered + deduped for real. The forgot/reset-password flow is also implemented and live-verified end to end (2026-07-07, real emailed token → client reset page → login; note `zachsmith852@gmail.com` no longer uses the shared test password). Next up: NotificationsController prefs endpoints, then the rest of Phase 2. Reminder: Resend's sandbox sender (`onboarding@resend.dev`) only delivers to the Resend account owner's address — verify a domain before emailing other users.
 
 Dev quickstart:
 - API: `dotnet run --launch-profile https` from `server/BerryMindful.Api` → https://localhost:7068 (MySQL runs as the local `MySQL83` Windows service; connection string is in user-secrets)
 - Client: `npm run dev` from `client/` → http://localhost:5173
-- Test accounts: `zach.test@example.com` / `password123`, and `zachsmith852@gmail.com` / `password123` (receives real Resend email — it's the Resend account owner's address)
+- Test accounts: `zach.test@example.com` / `password123`, and `zachsmith852@gmail.com` (password set by Zach via the reset flow; receives real Resend email — it's the Resend account owner's address)
 - Startup logs state whether the real scanner ("Vision + Claude pipeline active") and Resend delivery are enabled or falling back.
 
 ---
@@ -70,11 +70,11 @@ berrymindful/
                                   #   now, private package eventually
 ```
 
-Notes vs. the original sketch: rate limiting lives inline in Program.cs (no `Middleware/` folder needed yet — a rate-limit-key middleware comes with the per-email forgot-password limits), `TokenService/` arrives with the deferred password-reset endpoints, and there's no docker-compose — dev MySQL is the local Windows service.
+Notes vs. the original sketch: rate limiting lives inline in Program.cs, with `Middleware/RateLimitKeyMiddleware.cs` extracting the target email for the per-email password-endpoint limits; no separate `TokenService` materialized — the password-reset endpoints live in AuthController using `UserManager` + `IEmailService` directly; and there's no docker-compose — dev MySQL is the local Windows service.
 
 ### Program.cs / middleware pipeline (mirrors RSS)
 - Pipeline order: HTTPS redirect → CORS (allow `localhost:5173`) → JWT auth → rate limiter → Authorization → controllers.
-- Rate limits on auth paths (10 req/min by IP); tighter per-email limits on forgot-password / reset-password (3 req/hour) come with those endpoints (deferred), keyed via rate-limit-key extraction middleware.
+- Rate limits on auth paths (10 req/min by IP); forgot-password / reset-password use a tighter per-email policy (3 req/hour) keyed via `RateLimitKeyMiddleware`, which buffers the JSON body and stashes the normalized email before the rate limiter runs.
 - Per-user rate limit on `POST /receipts/scan` (20/hour) — the only endpoint that incurs Vision + Claude API costs, so this is the cost-control valve.
 - DI registrations: all BerryMindful.Services classes, `IEmailService` (ZlEmailProvider's `ResendEmailService`, or `LoggingEmailService` without a key), MySQL DbContext (Pomelo) + ASP.NET Identity, `ExpiryNotificationWorker`. Scanner and email implementations are selected at startup based on which secrets are present.
 - Secrets (JWT signing key, `Anthropic:ApiKey`, `GoogleVision:CredentialsPath`, `Resend:ApiKey`) via `dotnet user-secrets` in dev, environment variables on the VPS — never in appsettings.json.
@@ -120,8 +120,8 @@ Note: Identity PKs are `string` (GUID) by default — all `UserId` FKs are strin
 - `POST /auth/login` — `SignInManager.CheckPasswordSignInAsync` → access token + refresh token
 - `POST /auth/refresh` → new access token
 - `GET /auth/me` [Authorize] — current user profile
-- `POST /auth/forgot-password` [rate-limited] — Identity reset token, emailed via TokenService *(deferred to early Phase 2; `IEmailService` is already wired)*
-- `POST /auth/reset-password` [rate-limited] — `UserManager.ResetPasswordAsync` (rotates security stamp → invalidates outstanding tokens) *(deferred to early Phase 2)*
+- `POST /auth/forgot-password` [rate-limited 3/hour per email] — Identity reset token, emailed via `IEmailService` (BerryMindful-branded copy composed in the controller — ZlEmailProvider's `SendPasswordResetAsync` has RSS-branded copy hardcoded); always 204 so responses don't reveal account existence
+- `POST /auth/reset-password` [rate-limited 3/hour per email] — `UserManager.ResetPasswordAsync` (rotates security stamp → invalidates outstanding tokens) + revokes refresh tokens; generic "invalid link" error for unknown email or bad token
 - Implemented but not in the original sketch: `POST /auth/refresh` reads the HttpOnly refresh cookie and rotates it; `POST /auth/logout` revokes the refresh token and rotates the security stamp.
 
 ### `ReceiptsController` [`/receipts`, all Authorize]
@@ -257,7 +257,7 @@ Built entirely on ASP.NET Core Identity (`Microsoft.AspNetCore.Identity.EntityFr
 - `ApplicationUser : IdentityUser`, `AppDbContext : IdentityDbContext<ApplicationUser>` — Identity owns password hashing, lockout, security stamps, and token providers. No custom credential code.
 - **JWT** (HMAC-SHA256): issuer/audience/key from config; claims include `NameIdentifier`, `Email`, `security_stamp`. Access tokens 15min TTL + refresh tokens (7 days, HttpOnly cookie).
 - **Security-stamp validation** (carried over from RSS): `OnTokenValidated` compares the JWT's `security_stamp` claim against the current stamp (IMemoryCache, 30s TTL) — password resets and explicit logout invalidate tokens across all devices immediately, without waiting for expiry.
-- **Password reset** tokens via `UserManager.GeneratePasswordResetTokenAsync`, delivered by `TokenService` through the email provider.
+- **Password reset** tokens via `UserManager.GeneratePasswordResetTokenAsync` (1-hour lifespan via `DataProtectionTokenProviderOptions`), emailed as a `/reset-password?token=…&email=…` link to the client; reset also revokes all refresh tokens.
 - No external auth vendor needed for MVP.
 
 ---
@@ -275,7 +275,7 @@ Email is simpler than Web Push for MVP — no service worker, no browser permiss
 ## Phasing
 
 ### Phase 1 — MVP (Core Loop)
-- [x] Auth (signup, login, JWT — Identity-backed; forgot/reset password slipped to early Phase 2)
+- [x] Auth (signup, login, JWT — Identity-backed; forgot/reset password implemented 2026-07-07 with per-email rate limiting + client pages)
 - [x] Receipt scan endpoint + Cloud Vision + Claude pipeline — live-tested with real keys on a Costco receipt (2026-07-07)
 - [x] Confirm + save pantry items
 - [x] Pantry dashboard (list, color-coded expiry, mark used/tossed)
@@ -320,3 +320,4 @@ Email is simpler than Web Push for MVP — no service worker, no browser permiss
 3. ✅ Confirm items → appear in pantry dashboard with correct expiry dates
 4. ✅ Mark one item as "Used" → status updates, item leaves active list
 5. ✅ Add an item expiring tomorrow → digest composed and deduped correctly *(verified 2026-07-07 with real Resend delivery to zachsmith852@gmail.com: 2 Expired + 1 Warning items in one digest, Resend 200, rerun sent 0 via NotificationLogs dedupe; trigger dev runs with `Notifications__RunOnStartup=true`)*
+6. ✅ Forgot/reset password → real emailed link → client reset page → login with new password; enumeration-safe 204s, 3/hour per-email limit (4th request 429), bad token rejected, all sessions revoked on reset *(verified 2026-07-07)*
