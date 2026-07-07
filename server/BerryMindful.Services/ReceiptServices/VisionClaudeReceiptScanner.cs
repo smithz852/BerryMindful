@@ -41,16 +41,23 @@ public class VisionClaudeReceiptScanner(
             ocrText = ocrText[..MaxOcrChars];
         }
 
-        IReadOnlyList<PantryItemDraftDto> items;
+        ReceiptParseResult parsed;
         try
         {
-            items = await parser.ParseItemsAsync(ocrText, cancellationToken);
+            parsed = await parser.ParseAsync(ocrText, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Claude item extraction failed for {FileName}", fileName);
             throw new ReceiptScanException("Couldn't extract items from the receipt.", ex);
         }
+
+        // Use the receipt's printed transaction date when it's plausible (not in the
+        // future, not over a year old — OCR misreads happen); otherwise assume today.
+        var today = DateTime.UtcNow.Date;
+        var purchasedAt = parsed.PurchasedAt is { } date && date <= today && date >= today.AddYears(-1)
+            ? date
+            : today;
 
         // MVP heuristic: receipts print the store name on the first line. Phase 2
         // upgrades this to real store detection with shelf-life adjustments.
@@ -62,6 +69,6 @@ public class VisionClaudeReceiptScanner(
             storeName = storeName[..MaxStoreNameChars];
         }
 
-        return new ReceiptScanResultDto(storeName, DateTime.UtcNow.Date, null, ocrText, items);
+        return new ReceiptScanResultDto(storeName, purchasedAt, null, ocrText, parsed.Items);
     }
 }

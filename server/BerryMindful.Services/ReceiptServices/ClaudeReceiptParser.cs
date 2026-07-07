@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 using Anthropic;
 using Anthropic.Helpers;
@@ -7,9 +8,11 @@ using BerryMindful.Services.DTOs;
 
 namespace BerryMindful.Services.ReceiptServices;
 
+public record ReceiptParseResult(DateTime? PurchasedAt, IReadOnlyList<PantryItemDraftDto> Items);
+
 public interface IReceiptParser
 {
-    Task<IReadOnlyList<PantryItemDraftDto>> ParseItemsAsync(string ocrText, CancellationToken cancellationToken = default);
+    Task<ReceiptParseResult> ParseAsync(string ocrText, CancellationToken cancellationToken = default);
 }
 
 // Extracts food items from raw receipt OCR text with claude-haiku-4-5 using
@@ -19,8 +22,11 @@ public class ClaudeReceiptParser(string apiKey) : IReceiptParser
 {
     private const string SystemPrompt =
         """
-        You are a grocery item identifier. Given raw receipt OCR text, extract each
-        food item. For each item, provide:
+        You are a grocery item identifier. Given raw receipt OCR text, extract the
+        purchase date and each food item.
+        - purchaseDate: the transaction date printed on the receipt as YYYY-MM-DD,
+          or null if no date is visible.
+        For each item, provide:
         - name: human-readable food name
         - category: the closest matching category
         - estimatedExpiryDays: integer, typical days until spoilage from purchase date
@@ -29,22 +35,24 @@ public class ClaudeReceiptParser(string apiKey) : IReceiptParser
         Common abbreviations: ORG/ORGC = Organic, BNNA = Banana, STRBRY = Strawberry,
         MLK = Milk, CHKN = Chicken, WHL = Whole, LF = Low Fat, 3PK/2PK = multipack (ignore count),
         SML/LRG = size descriptor (ignore), DELI = deli department, BF = Beef, GND = Ground,
-        YGT = Yogurt, CHDR = Cheddar, BROC = Broccoli, AVCD = Avocado, TMAT = Tomato.
+        YGT = Yogurt, CHDR = Cheddar, BROC = Broccoli, AVCD = Avocado, TMAT = Tomato,
+        CSR = Caesar (CSR KIT = Caesar salad kit: produce, short shelf life),
+        KS = Kirkland Signature (brand, not a food word).
 
         Skip non-food lines: tax, subtotal, total, store name, cashier, loyalty points, coupon.
 
         Examples:
 
         Input: "ORG BNNA 3PK  1.49"
-        Output: {"items":[{"name":"Organic Bananas","category":"produce","estimatedExpiryDays":5}]}
+        Output: {"purchaseDate":null,"items":[{"name":"Organic Bananas","category":"produce","estimatedExpiryDays":5}]}
 
-        Input: "GND BF 93/7 LB  5.99\nWHL MLK GAL  3.49\nORG STRBRY PINT  4.99"
-        Output: {"items":[{"name":"Ground Beef 93/7","category":"meat","estimatedExpiryDays":2},{"name":"Whole Milk","category":"dairy","estimatedExpiryDays":10},{"name":"Organic Strawberries","category":"produce","estimatedExpiryDays":4}]}
+        Input: "GND BF 93/7 LB  5.99\nWHL MLK GAL  3.49\nORG STRBRY PINT  4.99\n06/29/2026 19:06"
+        Output: {"purchaseDate":"2026-06-29","items":[{"name":"Ground Beef 93/7","category":"meat","estimatedExpiryDays":2},{"name":"Whole Milk","category":"dairy","estimatedExpiryDays":10},{"name":"Organic Strawberries","category":"produce","estimatedExpiryDays":4}]}
         """;
 
     private readonly AnthropicClient _client = new() { ApiKey = apiKey };
 
-    public async Task<IReadOnlyList<PantryItemDraftDto>> ParseItemsAsync(
+    public async Task<ReceiptParseResult> ParseAsync(
         string ocrText, CancellationToken cancellationToken = default)
     {
         var message = await _client.Messages.Create(new MessageCreateParams
@@ -63,7 +71,13 @@ public class ClaudeReceiptParser(string apiKey) : IReceiptParser
             .Select(block => block.TryPickText(out var text) ? text.Text : string.Empty));
         var parsed = StructuredOutput.Parse<ParsedReceipt>(json);
 
-        return parsed.Items
+        DateTime? purchasedAt = DateTime.TryParseExact(
+            parsed.PurchaseDate, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var date)
+            ? date.Date
+            : null;
+
+        var items = parsed.Items
             .Select(item => new PantryItemDraftDto(
                 item.Name,
                 Enum.TryParse<ItemCategory>(item.Category, ignoreCase: true, out var category)
@@ -71,6 +85,8 @@ public class ClaudeReceiptParser(string apiKey) : IReceiptParser
                     : ItemCategory.Other,
                 Math.Clamp(item.EstimatedExpiryDays, 0, 3650)))
             .ToList();
+
+        return new ReceiptParseResult(purchasedAt, items);
     }
 }
 
@@ -78,6 +94,10 @@ public class ClaudeReceiptParser(string apiKey) : IReceiptParser
 // JSON schema from these types, and the API enforces it on the response.
 public sealed class ParsedReceipt
 {
+    [JsonPropertyName("purchaseDate")]
+    [SchemaProperty("Transaction date printed on the receipt as YYYY-MM-DD, or null if none is visible")]
+    public string? PurchaseDate { get; set; }
+
     [JsonPropertyName("items")]
     public List<ParsedReceiptItem> Items { get; set; } = [];
 }
