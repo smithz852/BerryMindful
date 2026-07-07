@@ -87,6 +87,9 @@ export function PantryPage() {
         <Link to="/pantry/add" className="button-link">
           + Add item
         </Link>
+        <Link to="/analytics" className="button-link">
+          📊 Analytics
+        </Link>
       </nav>
 
       {isLoading && <p className="loading">Loading pantry…</p>}

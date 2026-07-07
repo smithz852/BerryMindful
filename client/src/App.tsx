@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { AuthPage } from "./pages/AuthPage";
@@ -8,6 +9,11 @@ import { PantryPage } from "./pages/PantryPage";
 import { ScanPage } from "./pages/ScanPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
 import { AddItemPage } from "./pages/AddItemPage";
+
+// Lazy: keeps Recharts out of the main bundle for the everyday pantry flow.
+const AnalyticsPage = lazy(() =>
+  import("./pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })),
+);
 import "./App.css";
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -39,6 +45,16 @@ function App() {
           element={
             <ProtectedRoute>
               <AddItemPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute>
+              <Suspense fallback={<p className="loading">Loading…</p>}>
+                <AnalyticsPage />
+              </Suspense>
             </ProtectedRoute>
           }
         />

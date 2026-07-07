@@ -17,7 +17,10 @@ export function useUpdateItemStatus() {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pantry"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pantry"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
+    },
   });
 }
 
@@ -25,7 +28,10 @@ export function useDeleteItem() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api<void>(`/pantry/${id}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pantry"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pantry"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
+    },
   });
 }
 

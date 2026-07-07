@@ -182,3 +182,106 @@ button.primary {
   padding: 0.4rem;
   font-size: 0.95rem;
 }
+
+.range-selector {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.range-selector button {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.7rem;
+}
+
+.range-selector button.active {
+  color: var(--text-h);
+  border-color: currentColor;
+}
+
+.analytics-tiles {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-tile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.08);
+  text-align: left;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.stat-sub {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.chart-section {
+  margin-bottom: 1.75rem;
+  text-align: left;
+}
+
+.chart-section h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.chart-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 0.3rem;
+}
+
+/* Recharts marks/text: 2px surface gap between fills; labels in ink, never series color. */
+.analytics .recharts-bar-rectangle path {
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+
+.analytics .recharts-text {
+  fill: var(--text);
+  font-size: 0.8rem;
+}
+
+.most-tossed {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.most-tossed th,
+.most-tossed td {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+.most-tossed th {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}

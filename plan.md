@@ -4,7 +4,7 @@
 BerryMindful is a grocery tracking web app whose primary goal is reducing food waste. The core insight: most food spoils because people forget what they bought and when. The app solves this by making item entry nearly effortless via receipt scanning, then proactively alerting users as items approach their expiry window.
 
 ## Status (as of 2026-07-06)
-Phase 1 is **complete and fully live-verified** (2026-07-07): all three API keys set, Vision + Claude pipeline tested on real receipts (incl. purchase-date extraction), and the Resend expiry digest delivered + deduped for real. The forgot/reset-password flow is also implemented and live-verified end to end (2026-07-07, real emailed token → client reset page → login; note `zachsmith852@gmail.com` no longer uses the shared test password). Next up: NotificationsController prefs endpoints, then the rest of Phase 2. Reminder: Resend's sandbox sender (`onboarding@resend.dev`) only delivers to the Resend account owner's address — verify a domain before emailing other users.
+Phase 1 is **complete and fully live-verified** (2026-07-07): all three API keys set, Vision + Claude pipeline tested on real receipts (incl. purchase-date extraction), and the Resend expiry digest delivered + deduped for real. The forgot/reset-password flow is also implemented and live-verified end to end (2026-07-07, real emailed token → client reset page → login; note `zachsmith852@gmail.com` no longer uses the shared test password). The waste analytics dashboard (Phase 2) is built and live-verified (2026-07-07): new `PantryItems.StatusChangedAt` column + `/analytics/waste` endpoint + `/analytics` client page (Recharts). Next up: NotificationsController prefs endpoints, then the rest of Phase 2. Reminder: Resend's sandbox sender (`onboarding@resend.dev`) only delivers to the Resend account owner's address — verify a domain before emailing other users.
 
 Dev quickstart:
 - API: `dotnet run --launch-profile https` from `server/BerryMindful.Api` → https://localhost:7068 (MySQL runs as the local `MySQL83` Windows service; connection string is in user-secrets)
@@ -285,7 +285,7 @@ Email is simpler than Web Push for MVP — no service worker, no browser permiss
 ### Phase 2 — Growth Features
 - Store detection from receipt header → store-tier shelf-life adjustments
 - Web Push notifications (service worker)
-- Waste analytics dashboard (items tossed vs used over time)
+- [x] Waste analytics dashboard (items tossed vs used over time) — built + live-verified 2026-07-07: `StatusChangedAt` column (backfilled from `UpdatedAt` for pre-existing rows), `GET /analytics/waste?days=30|90|0` (`WasteAnalyticsService`, in-memory weekly/category/most-tossed aggregation), client `/analytics` page (Recharts, lazy-loaded chunk; KPI tiles, weekly stacked bars, category bars, top-5 table). Note: deleted items are hard-deleted and vanish from analytics history (known limitation).
 - Household sharing (invite by email, shared pantry view)
 - Barcode scanning (Open Food Facts API)
 - Category filters + search
