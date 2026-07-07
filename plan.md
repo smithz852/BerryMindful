@@ -3,6 +3,15 @@
 ## Context
 BerryMindful is a grocery tracking web app whose primary goal is reducing food waste. The core insight: most food spoils because people forget what they bought and when. The app solves this by making item entry nearly effortless via receipt scanning, then proactively alerting users as items approach their expiry window.
 
+## Status (as of 2026-07-06)
+Phase 1 is **code-complete**; the receipt pipeline and email delivery run against stubs/console logging until API keys are added (see the user-secrets commands in Dev Environment Setup step 9 and the Notifications section). Live-with-keys testing is the remaining Phase 1 work.
+
+Dev quickstart:
+- API: `dotnet run --launch-profile https` from `server/BerryMindful.Api` → https://localhost:7068 (MySQL runs as the local `MySQL83` Windows service; connection string is in user-secrets)
+- Client: `npm run dev` from `client/` → http://localhost:5173
+- Test account: `zach.test@example.com` / `password123`
+- Startup logs state whether the real scanner ("Vision + Claude pipeline active") and Resend delivery are enabled or falling back.
+
 ---
 
 ## Tech Stack
@@ -11,11 +20,11 @@ BerryMindful is a grocery tracking web app whose primary goal is reducing food w
 | Frontend | React (Vite) + TanStack Query (no store library — see Frontend Architecture) |
 | Backend | ASP.NET Core 10 Web API (.NET 10 LTS, supported to Nov 2028; controller-based, mirroring the RSS architecture) |
 | ORM | EF Core 9 + Pomelo 9 MySQL provider (Pomelo 9 runs on .NET 10; bump to EF Core 10 when Pomelo 10 ships) |
-| Database | MySQL |
+| Database | MySQL 8 (local `MySQL83` Windows service in dev) |
 | OCR | Google Cloud Vision API |
 | Item parsing | Claude API (`claude-haiku-4-5`) via official Anthropic C# SDK, structured outputs for guaranteed-valid JSON |
 | Auth | ASP.NET Core Identity (built-in `IdentityDbContext` / `UserManager`) + JWT (access + refresh tokens) |
-| Notifications | Email (MVP) → Web Push API (Phase 2) |
+| Notifications | Email digest via shared **ZlEmailProvider** library (Resend) (MVP) → Web Push API (Phase 2) |
 | Hosting | Self-hosted VPS (Linux, nginx reverse proxy) |
 
 ---
@@ -28,39 +37,47 @@ Backend mirrors the RetroSportsSquares 3-project solution layout (API / data / s
 berrymindful/
 ├── client/                       # React (Vite) app
 │   ├── src/
-│   │   ├── api/                  # Typed fetch wrappers
-│   │   ├── components/           # Shared UI components
-│   │   ├── pages/                # Route-level pages
-│   │   ├── hooks/                # useAuth + shared hooks (no store library)
-│   │   └── types/                # Shared TypeScript types
+│   │   ├── api/                  # Typed fetch wrapper (client.ts)
+│   │   ├── pages/                # Route-level pages (Auth, Pantry, Scan, Confirm, AddItem)
+│   │   ├── hooks/                # useAuth, usePantry, useReceipts (no store library)
+│   │   ├── types/                # Shared TypeScript types
+│   │   └── utils/                # downscaleImage (client-side resize before upload)
 ├── server/                       # BerryMindful.sln
 │   ├── BerryMindful.Api/         # API project (entry point)
-│   │   ├── Program.cs            # DI, middleware pipeline, rate limiter, JWT setup
-│   │   ├── Controllers/          # AuthController, UserController, ReceiptsController,
-│   │   │                         #   PantryController, NotificationsController
-│   │   ├── Middleware/           # Rate-limit key extraction (auth-sensitive endpoints)
-│   │   └── Workers/              # ExpiryNotificationWorker (hosted service)
+│   │   ├── Program.cs            # DI, middleware pipeline, rate limiter, JWT setup,
+│   │   │                         #   key-based scanner/email fallback selection
+│   │   ├── Controllers/          # AuthController, ReceiptsController, PantryController
+│   │   ├── Workers/              # ExpiryNotificationWorker (hosted service)
+│   │   └── uploads/              # Receipt images (gitignored; object storage later)
 │   ├── BerryMindful.Data/        # Data access layer
 │   │   ├── AppDbContext.cs       # extends IdentityDbContext<ApplicationUser>
 │   │   ├── AppDbContextFactory.cs  # design-time factory for migrations
-│   │   ├── Entities/             # ApplicationUser, Receipt, PantryItem, NotificationLog
+│   │   ├── Entities/             # ApplicationUser, Receipt, PantryItem,
+│   │   │                         #   NotificationLog, RefreshToken
 │   │   └── Migrations/
 │   └── BerryMindful.Services/    # Business logic
-│       ├── ReceiptServices/      # OCR + Claude pipeline
+│       ├── ReceiptServices/      # IReceiptScanner seam: VisionClaudeReceiptScanner
+│       │                         #   (GoogleVisionOcrService → ClaudeReceiptParser)
+│       │                         #   + StubReceiptScanner fallback; ReceiptService
 │       ├── PantryServices/
-│       ├── NotificationServices/
-│       ├── TokenService/         # Identity token generation + email delivery
-│       ├── Helpers/              # OCR text prep, Claude response parsing, time utils
-│       └── DTOs/                 # ReceiptScanResultDTO, PantryItemDraftDTO, etc.
-└── docker-compose.yml            # Local MySQL + API for dev
+│       ├── NotificationServices/ # ExpiryNotificationService (digest compose + dedupe),
+│       │                         #   LoggingEmailService (no-key fallback)
+│       └── DTOs/                 # ReceiptScanResultDto, PantryItemDraftDto, etc.
+└── plan.md
+
+../ZlEmailProvider/               # Sibling repo: shared Resend email transport
+                                  #   (IEmailService.SendAsync) — project reference for
+                                  #   now, private package eventually
 ```
+
+Notes vs. the original sketch: rate limiting lives inline in Program.cs (no `Middleware/` folder needed yet — a rate-limit-key middleware comes with the per-email forgot-password limits), `TokenService/` arrives with the deferred password-reset endpoints, and there's no docker-compose — dev MySQL is the local Windows service.
 
 ### Program.cs / middleware pipeline (mirrors RSS)
 - Pipeline order: HTTPS redirect → CORS (allow `localhost:5173`) → JWT auth → rate limiter → Authorization → controllers.
-- Rate limits on auth paths (10 req/min by IP); tighter per-email limits on forgot-password / reset-password (3 req/hour), keyed via rate-limit-key extraction middleware.
-- Per-user rate limit on `POST /receipts/scan` (e.g. 20/hour) — the only endpoint that incurs Vision + Claude API costs, so this is the cost-control valve.
-- DI registrations: all BerryMindful.Services classes, `IEmailService` implementation, MySQL DbContext (Pomelo) + ASP.NET Identity, hosted background worker(s).
-- Secrets (JWT signing key, Claude API key, Vision credentials, SMTP creds) via `dotnet user-secrets` in dev, environment variables on the VPS — never in appsettings.json.
+- Rate limits on auth paths (10 req/min by IP); tighter per-email limits on forgot-password / reset-password (3 req/hour) come with those endpoints (deferred), keyed via rate-limit-key extraction middleware.
+- Per-user rate limit on `POST /receipts/scan` (20/hour) — the only endpoint that incurs Vision + Claude API costs, so this is the cost-control valve.
+- DI registrations: all BerryMindful.Services classes, `IEmailService` (ZlEmailProvider's `ResendEmailService`, or `LoggingEmailService` without a key), MySQL DbContext (Pomelo) + ASP.NET Identity, `ExpiryNotificationWorker`. Scanner and email implementations are selected at startup based on which secrets are present.
+- Secrets (JWT signing key, `Anthropic:ApiKey`, `GoogleVision:CredentialsPath`, `Resend:ApiKey`) via `dotnet user-secrets` in dev, environment variables on the VPS — never in appsettings.json.
 
 ---
 
@@ -103,8 +120,9 @@ Note: Identity PKs are `string` (GUID) by default — all `UserId` FKs are strin
 - `POST /auth/login` — `SignInManager.CheckPasswordSignInAsync` → access token + refresh token
 - `POST /auth/refresh` → new access token
 - `GET /auth/me` [Authorize] — current user profile
-- `POST /auth/forgot-password` [rate-limited] — Identity reset token, emailed via TokenService
-- `POST /auth/reset-password` [rate-limited] — `UserManager.ResetPasswordAsync` (rotates security stamp → invalidates outstanding tokens)
+- `POST /auth/forgot-password` [rate-limited] — Identity reset token, emailed via TokenService *(deferred to early Phase 2; `IEmailService` is already wired)*
+- `POST /auth/reset-password` [rate-limited] — `UserManager.ResetPasswordAsync` (rotates security stamp → invalidates outstanding tokens) *(deferred to early Phase 2)*
+- Implemented but not in the original sketch: `POST /auth/refresh` reads the HttpOnly refresh cookie and rotates it; `POST /auth/logout` revokes the refresh token and rotates the security stamp.
 
 ### `ReceiptsController` [`/receipts`, all Authorize]
 - `POST /receipts/scan` — multipart image upload → triggers Vision + Claude pipeline → returns parsed items for user confirmation
@@ -117,7 +135,7 @@ Note: Identity PKs are `string` (GUID) by default — all `UserId` FKs are strin
 - `POST /pantry/items` — manual item entry (fallback)
 - `DELETE /pantry/{id}`
 
-### `NotificationsController` [`/notifications`, all Authorize]
+### `NotificationsController` [`/notifications`, all Authorize] *(not built yet — the `NotificationsEnabled` / `NotificationEmail` columns exist and the digest respects them; this controller just exposes the toggle)*
 - `GET /notifications/prefs` / `PUT /notifications/prefs` — manage email notification opt-in
 
 ---
@@ -240,7 +258,7 @@ Built entirely on ASP.NET Core Identity (`Microsoft.AspNetCore.Identity.EntityFr
 `ExpiryNotificationWorker` — a hosted background service in `BerryMindful.Api/Workers/`, following the RSS `BaseSportsAutomation` pattern (abstract daily-scheduled base class is overkill for one worker, but same shape: registered in Program.cs DI, runs daily at a configured local hour). It:
 1. Queries `PantryItems` where `Status = Active` and `ExpiresAt` is within 2 days
 2. Skips items already logged in `NotificationLogs` for that window
-3. Sends a summary digest email via `IEmailService` (SMTP — e.g., Mailgun free tier or self-hosted Postfix)
+3. Sends a summary digest email via `IEmailService` — the shared **ZlEmailProvider** library (Resend), referenced as a sibling-repo project reference (eventually a private package). Enable delivery with `dotnet user-secrets set "Resend:ApiKey" "re_..."`; without the key, emails log to console. From/name and digest hour configured in appsettings (`Email`, `Notifications` sections).
 
 Email is simpler than Web Push for MVP — no service worker, no browser permission UX to build. Web Push is Phase 2.
 
@@ -249,12 +267,12 @@ Email is simpler than Web Push for MVP — no service worker, no browser permiss
 ## Phasing
 
 ### Phase 1 — MVP (Core Loop)
-- [ ] Auth (signup, login, JWT — Identity-backed; forgot/reset password can slip to early Phase 2 if needed)
-- [ ] Receipt scan endpoint + Cloud Vision + Claude pipeline
-- [ ] Confirm + save pantry items
-- [ ] Pantry dashboard (list, color-coded expiry, mark used/tossed)
-- [ ] Manual item entry fallback
-- [ ] Daily email notification digest
+- [x] Auth (signup, login, JWT — Identity-backed; forgot/reset password slipped to early Phase 2)
+- [x] Receipt scan endpoint + Cloud Vision + Claude pipeline — code complete; falls back to StubReceiptScanner until keys are set (live test pending API keys)
+- [x] Confirm + save pantry items
+- [x] Pantry dashboard (list, color-coded expiry, mark used/tossed)
+- [x] Manual item entry fallback
+- [x] Daily email notification digest — via shared ZlEmailProvider lib (Resend); logs to console until `Resend:ApiKey` is set in user-secrets
 
 ### Phase 2 — Growth Features
 - Store detection from receipt header → store-tier shelf-life adjustments
@@ -269,7 +287,9 @@ Email is simpler than Web Push for MVP — no service worker, no browser permiss
 
 ## Dev Environment Setup (Recommended First Steps)
 
-1. `docker-compose.yml` with MySQL 8 service → `docker compose up -d`
+*Steps 1–8 are done; step 9 is code-complete with the live key test pending.*
+
+1. ~~docker-compose MySQL~~ → using the machine's existing `MySQL83` Windows service instead (no Docker installed); database `berrymindful`, connection string in user-secrets (`ConnectionStrings:Default`)
 2. Scaffold `BerryMindful.sln` on .NET 10: `dotnet new sln`, add `BerryMindful.Api` (webapi), `BerryMindful.Data` (classlib), `BerryMindful.Services` (classlib); references `Api` → `Services` → `Data`
 3. `BerryMindful.Data`: add `Microsoft.AspNetCore.Identity.EntityFrameworkCore` (9.x) + `Pomelo.EntityFrameworkCore.MySql` (9.x), create `ApplicationUser` + `AppDbContext : IdentityDbContext<ApplicationUser>` + `AppDbContextFactory`
 4. Run first EF migration: `dotnet ef migrations add InitialCreate` (creates Identity tables + domain tables)
@@ -277,13 +297,18 @@ Email is simpler than Web Push for MVP — no service worker, no browser permiss
 6. Vite React app: `npm create vite@latest client -- --template react-ts`
 7. Wire TanStack Query + `useAuth` hook, build login page
 8. Stub `POST /receipts/scan` returning hardcoded JSON → build the confirm + save flow end to end before wiring real OCR
-9. Integrate Cloud Vision + the Anthropic C# SDK (structured outputs) once the data pipeline shape is validated; add Claude/Vision keys to user-secrets
+9. Integrate Cloud Vision + the Anthropic C# SDK (structured outputs) once the data pipeline shape is validated; add Claude/Vision keys to user-secrets. ✅ Pipeline built (`GoogleVisionOcrService` → `ClaudeReceiptParser` → `VisionClaudeReceiptScanner`); the API auto-selects it over the stub when both keys are present. To enable, run from `server/BerryMindful.Api`:
+   ```
+   dotnet user-secrets set "Anthropic:ApiKey" "sk-ant-..."
+   dotnet user-secrets set "GoogleVision:CredentialsPath" "C:\path\to\vision-service-account.json"
+   ```
+   (Google Vision uses a service-account JSON downloaded from Google Cloud Console; `GOOGLE_APPLICATION_CREDENTIALS` env var also works.)
 
 ---
 
 ## Verification (End-to-End Test)
-1. Register a user → JWT returned
-2. Upload a real grocery receipt image → confirm OCR text appears in logs, Claude returns valid JSON
-3. Confirm items → appear in pantry dashboard with correct expiry dates
-4. Mark one item as "Used" → status updates, item leaves active list
-5. Manually set an item's `ExpiresAt` to tomorrow → verify notification job sends email
+1. ✅ Register a user → JWT returned (plus refresh rotation, logout security-stamp invalidation verified)
+2. ⬜ Upload a real grocery receipt image → confirm OCR text appears in logs, Claude returns valid JSON *(pending API keys — stub path verified end to end)*
+3. ✅ Confirm items → appear in pantry dashboard with correct expiry dates
+4. ✅ Mark one item as "Used" → status updates, item leaves active list
+5. 🟡 Add an item expiring tomorrow → digest composed and deduped correctly via the console-logging sender *(real Resend delivery pending key)*

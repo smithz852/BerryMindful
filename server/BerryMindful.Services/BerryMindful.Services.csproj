@@ -2,6 +2,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BerryMindful.Data\BerryMindful.Data.csproj" />
+    <ProjectReference Include="..\..\..\ZlEmailProvider\ZlEmailProvider\ZlEmailProvider.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Anthropic" Version="12.35.1" />
+    <PackageReference Include="Google.Cloud.Vision.V1" Version="3.8.0" />
   </ItemGroup>
 
   <PropertyGroup>

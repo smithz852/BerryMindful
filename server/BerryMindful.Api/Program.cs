@@ -2,8 +2,13 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using BerryMindful.Api.Workers;
 using BerryMindful.Data;
 using BerryMindful.Data.Entities;
+using BerryMindful.Services.NotificationServices;
+using BerryMindful.Services.ReceiptServices;
+using Resend;
+using ZlEmailProvider;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
@@ -40,8 +45,47 @@ builder.Services.AddMemoryCache();
 
 builder.Services.AddScoped<BerryMindful.Services.ReceiptServices.ReceiptService>();
 builder.Services.AddScoped<BerryMindful.Services.PantryServices.PantryService>();
-builder.Services.AddScoped<BerryMindful.Services.ReceiptServices.IReceiptScanner,
-    BerryMindful.Services.ReceiptServices.StubReceiptScanner>();
+
+// Real Vision + Claude scan pipeline when both keys are configured (user-secrets in
+// dev, env vars in prod); otherwise fall back to the stub so dev works without keys.
+var anthropicApiKey = builder.Configuration["Anthropic:ApiKey"];
+var visionCredentialsPath = builder.Configuration["GoogleVision:CredentialsPath"];
+var visionConfigured = !string.IsNullOrWhiteSpace(visionCredentialsPath)
+    || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS"));
+var scanPipelineConfigured = !string.IsNullOrWhiteSpace(anthropicApiKey) && visionConfigured;
+
+if (scanPipelineConfigured)
+{
+    builder.Services.AddSingleton<IOcrService>(new GoogleVisionOcrService(visionCredentialsPath));
+    builder.Services.AddSingleton<IReceiptParser>(new ClaudeReceiptParser(anthropicApiKey!));
+    builder.Services.AddScoped<IReceiptScanner, VisionClaudeReceiptScanner>();
+}
+else
+{
+    builder.Services.AddScoped<IReceiptScanner, StubReceiptScanner>();
+}
+
+// Expiry digest emails via ZlEmailProvider + Resend when the key is configured;
+// otherwise emails are logged to the console (same fallback pattern as the scanner).
+builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection("Notifications"));
+builder.Services.AddScoped<ExpiryNotificationService>();
+
+var resendApiKey = builder.Configuration["Resend:ApiKey"];
+var emailConfigured = !string.IsNullOrWhiteSpace(resendApiKey);
+if (emailConfigured)
+{
+    builder.Services.AddHttpClient<ResendClient>();
+    builder.Services.Configure<ResendClientOptions>(o => o.ApiToken = resendApiKey!);
+    builder.Services.AddTransient<IResend, ResendClient>();
+    builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection("Email"));
+    builder.Services.AddTransient<IEmailService, ResendEmailService>();
+}
+else
+{
+    builder.Services.AddTransient<IEmailService, LoggingEmailService>();
+}
+
+builder.Services.AddHostedService<ExpiryNotificationWorker>();
 
 var jwt = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwt["Key"]
@@ -124,6 +168,27 @@ builder.Services.AddRateLimiter(o =>
 });
 
 var app = builder.Build();
+
+if (scanPipelineConfigured)
+{
+    app.Logger.LogInformation("Receipt scanning: Vision + Claude pipeline active.");
+}
+else
+{
+    app.Logger.LogWarning(
+        "Receipt scanning: using StubReceiptScanner — set Anthropic:ApiKey and "
+        + "GoogleVision:CredentialsPath (dotnet user-secrets) to enable the real pipeline.");
+}
+
+if (emailConfigured)
+{
+    app.Logger.LogInformation("Email: Resend delivery active.");
+}
+else
+{
+    app.Logger.LogWarning(
+        "Email: logging to console only — set Resend:ApiKey (dotnet user-secrets) to enable delivery.");
+}
 
 if (app.Environment.IsDevelopment())
 {

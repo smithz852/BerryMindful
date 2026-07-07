@@ -13,7 +13,8 @@ namespace BerryMindful.Api.Controllers;
 public class ReceiptsController(
     IReceiptScanner scanner,
     ReceiptService receiptService,
-    IWebHostEnvironment env) : ControllerBase
+    IWebHostEnvironment env,
+    ILogger<ReceiptsController> logger) : ControllerBase
 {
     private static readonly string[] AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private const long MaxImageBytes = 10 * 1024 * 1024;
@@ -49,9 +50,19 @@ public class ReceiptsController(
         }
 
         await using var scanStream = System.IO.File.OpenRead(storedPath);
-        var result = await scanner.ScanAsync(scanStream, storedName, cancellationToken);
-
-        return Ok(result with { ImageUrl = $"/uploads/{storedName}" });
+        try
+        {
+            var result = await scanner.ScanAsync(scanStream, storedName, cancellationToken);
+            return Ok(result with { ImageUrl = $"/uploads/{storedName}" });
+        }
+        catch (ReceiptScanException ex)
+        {
+            logger.LogError(ex, "Receipt scan pipeline failed for {StoredName}", storedName);
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                error = "We couldn't read that receipt right now. Try again, or add items manually.",
+            });
+        }
     }
 
     [HttpPost("confirm")]
