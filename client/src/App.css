@@ -285,3 +285,16 @@ button.primary {
   font-size: 0.8rem;
   opacity: 0.75;
 }
+
+.admin-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.admin-badge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: rgba(41, 128, 185, 0.15);
+  color: #2980b9;
+}

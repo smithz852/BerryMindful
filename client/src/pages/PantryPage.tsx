@@ -90,6 +90,11 @@ export function PantryPage() {
         <Link to="/analytics" className="button-link">
           📊 Analytics
         </Link>
+        {user?.isAdmin && (
+          <Link to="/admin" className="button-link">
+            🛠 Admin
+          </Link>
+        )}
       </nav>
 
       {isLoading && <p className="loading">Loading pantry…</p>}
