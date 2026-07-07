@@ -51,6 +51,7 @@ builder.Services.AddMemoryCache();
 
 builder.Services.AddScoped<BerryMindful.Services.ReceiptServices.ReceiptService>();
 builder.Services.AddScoped<BerryMindful.Services.PantryServices.PantryService>();
+builder.Services.AddScoped<BerryMindful.Services.AnalyticsServices.WasteAnalyticsService>();
 
 // Real Vision + Claude scan pipeline when both keys are configured (user-secrets in
 // dev, env vars in prod); otherwise fall back to the stub so dev works without keys.

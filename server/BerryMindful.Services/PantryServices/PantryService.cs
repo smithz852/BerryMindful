@@ -27,6 +27,7 @@ public class PantryService(AppDbContext db)
         }
 
         item.Status = status;
+        item.StatusChangedAt = status == PantryItemStatus.Active ? null : DateTime.UtcNow;
         item.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
         return ReceiptService.ToDto(item);

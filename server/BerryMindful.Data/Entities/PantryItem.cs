@@ -36,6 +36,9 @@ public class PantryItem
     public DateTime ExpiresAt { get; set; }
     public PantryItemStatus Status { get; set; } = PantryItemStatus.Active;
 
+    /// <summary>When the item left Active (marked Used/Tossed); null while Active.</summary>
+    public DateTime? StatusChangedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
