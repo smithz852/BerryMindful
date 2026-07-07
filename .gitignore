@@ -1,0 +1,15 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+server/BerryMindful.Api/uploads/
+
+# Node / Vite
+node_modules/
+client/dist/
+*.local
+
+# OS
+Thumbs.db
+.DS_Store

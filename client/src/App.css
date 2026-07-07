@@ -1,0 +1,184 @@
+﻿main {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.auth-page form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.auth-page label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
+}
+
+.auth-page input {
+  padding: 0.5rem;
+  font-size: 1rem;
+}
+
+.error {
+  color: #c0392b;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem;
+}
+
+.pantry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pantry-header div {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pantry {
+  max-width: 36rem;
+}
+
+.pantry-nav {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.button-link {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.item-list,
+.confirm-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.item-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  border-left: 6px solid transparent;
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.urgency-green {
+  border-left-color: #27ae60;
+}
+
+.urgency-yellow {
+  border-left-color: #f39c12;
+}
+
+.urgency-red {
+  border-left-color: #c0392b;
+}
+
+.item-info {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.item-meta {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.item-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.item-actions button {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+}
+
+button.danger {
+  color: #c0392b;
+}
+
+button.primary {
+  padding: 0.6rem 1.2rem;
+  font-size: 1rem;
+}
+
+.empty {
+  opacity: 0.75;
+  padding: 1.5rem 0;
+}
+
+.confirm-page {
+  max-width: 36rem;
+}
+
+.confirm-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.confirm-row input:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.days-input {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.days-input input {
+  width: 3.5rem;
+}
+
+.confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.add-item-page form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.add-item-page label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
+}
+
+.add-item-page input,
+.add-item-page select,
+.confirm-row input,
+.confirm-row select {
+  padding: 0.4rem;
+  font-size: 0.95rem;
+}
