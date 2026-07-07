@@ -14,6 +14,9 @@ import { AddItemPage } from "./pages/AddItemPage";
 const AnalyticsPage = lazy(() =>
   import("./pages/AnalyticsPage").then((m) => ({ default: m.AnalyticsPage })),
 );
+const AdminPage = lazy(() =>
+  import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })),
+);
 import "./App.css";
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -22,6 +25,18 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
     return <p className="loading">Loading…</p>;
   }
   return user ? children : <Navigate to="/login" replace />;
+}
+
+// UX-level gate only — the /admin API endpoints enforce the role server-side.
+function AdminRoute({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return <p className="loading">Loading…</p>;
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  return user.isAdmin ? children : <Navigate to="/pantry" replace />;
 }
 
 function App() {
@@ -56,6 +71,16 @@ function App() {
                 <AnalyticsPage />
               </Suspense>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <Suspense fallback={<p className="loading">Loading…</p>}>
+                <AdminPage />
+              </Suspense>
+            </AdminRoute>
           }
         />
         <Route

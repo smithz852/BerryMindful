@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using BerryMindful.Api.Middleware;
+using BerryMindful.Api.Startup;
 using BerryMindful.Api.Workers;
 using BerryMindful.Data;
 using BerryMindful.Data.Entities;
@@ -52,6 +53,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddScoped<BerryMindful.Services.ReceiptServices.ReceiptService>();
 builder.Services.AddScoped<BerryMindful.Services.PantryServices.PantryService>();
 builder.Services.AddScoped<BerryMindful.Services.AnalyticsServices.WasteAnalyticsService>();
+builder.Services.AddScoped<BerryMindful.Services.AdminServices.AdminService>();
 
 // Real Vision + Claude scan pipeline when both keys are configured (user-secrets in
 // dev, env vars in prod); otherwise fall back to the stub so dev works without keys.
@@ -208,10 +210,16 @@ else
         "Email: logging to console only — set Resend:ApiKey (dotnet user-secrets) to enable delivery.");
 }
 
-if (app.Environment.IsDevelopment())
+using (var scope = app.Services.CreateScope())
 {
-    using var scope = app.Services.CreateScope();
-    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+    if (app.Environment.IsDevelopment())
+    {
+        scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+    }
+
+    // Role seeding runs in every environment (idempotent); prod designates
+    // admins via Admin__Emails__0 env vars rather than committed config.
+    await IdentitySeeder.SeedAsync(scope.ServiceProvider, app.Configuration, app.Logger);
 }
 
 app.UseHttpsRedirection();

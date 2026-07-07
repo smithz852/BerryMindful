@@ -194,12 +194,17 @@ public class AuthController(
             return Unauthorized();
         }
 
-        return Ok(new UserDto(user.Id, user.Email!, user.NotificationsEnabled));
+        return Ok(new UserDto(
+            user.Id,
+            user.Email!,
+            user.NotificationsEnabled,
+            await userManager.IsInRoleAsync(user, Roles.Admin)));
     }
 
     private async Task<AuthResponse> IssueTokensAsync(ApplicationUser user)
     {
-        var accessToken = GenerateJwtToken(user);
+        var roles = await userManager.GetRolesAsync(user);
+        var accessToken = GenerateJwtToken(user, roles);
 
         var rawRefreshToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
         db.RefreshTokens.Add(new RefreshToken
@@ -219,10 +224,14 @@ public class AuthController(
             Expires = DateTimeOffset.UtcNow.Add(RefreshTokenLifetime),
         });
 
-        return new AuthResponse(accessToken, new UserDto(user.Id, user.Email!, user.NotificationsEnabled));
+        return new AuthResponse(accessToken, new UserDto(
+            user.Id,
+            user.Email!,
+            user.NotificationsEnabled,
+            roles.Contains(Roles.Admin)));
     }
 
-    private string GenerateJwtToken(ApplicationUser user)
+    private string GenerateJwtToken(ApplicationUser user, IList<string> roles)
     {
         var claims = new List<Claim>
         {
@@ -230,6 +239,7 @@ public class AuthController(
             new(ClaimTypes.Email, user.Email!),
             new("security_stamp", user.SecurityStamp!),
         };
+        claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Key"]!));
         var token = new JwtSecurityToken(
