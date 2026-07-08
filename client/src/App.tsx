@@ -9,6 +9,7 @@ import { PantryPage } from "./pages/PantryPage";
 import { ScanPage } from "./pages/ScanPage";
 import { ConfirmPage } from "./pages/ConfirmPage";
 import { AddItemPage } from "./pages/AddItemPage";
+import { RecipesPage } from "./pages/RecipesPage";
 
 // Lazy: keeps Recharts out of the main bundle for the everyday pantry flow.
 const AnalyticsPage = lazy(() =>
@@ -60,6 +61,14 @@ function App() {
           element={
             <ProtectedRoute>
               <AddItemPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/recipes"
+          element={
+            <ProtectedRoute>
+              <RecipesPage />
             </ProtectedRoute>
           }
         />

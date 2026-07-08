@@ -9,6 +9,7 @@ using BerryMindful.Data;
 using BerryMindful.Data.Entities;
 using BerryMindful.Services.NotificationServices;
 using BerryMindful.Services.ReceiptServices;
+using BerryMindful.Services.RecipeServices;
 using Resend;
 using ZlEmailProvider;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -95,6 +96,27 @@ else
 }
 
 builder.Services.AddHostedService<ExpiryNotificationWorker>();
+
+// Recipe search via Spoonacular when the key is configured; otherwise a stub
+// provider matches canned recipes (same fallback pattern as the scanner/email).
+// The key stays server-side — the client only ever talks to RecipesController.
+var spoonacularApiKey = builder.Configuration["Spoonacular:ApiKey"];
+var recipesConfigured = !string.IsNullOrWhiteSpace(spoonacularApiKey);
+if (recipesConfigured)
+{
+    builder.Services.AddHttpClient("spoonacular", c =>
+    {
+        c.BaseAddress = new Uri("https://api.spoonacular.com/");
+        c.Timeout = TimeSpan.FromSeconds(15);
+    });
+    builder.Services.AddScoped<IRecipeProvider>(sp => new SpoonacularRecipeService(
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient("spoonacular"),
+        spoonacularApiKey!));
+}
+else
+{
+    builder.Services.AddScoped<IRecipeProvider, StubRecipeService>();
+}
 
 var jwt = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwt["Key"]
@@ -185,6 +207,16 @@ builder.Services.AddRateLimiter(o =>
             Window = TimeSpan.FromHours(1),
             PermitLimit = 20,
         }));
+
+    // Recipe searches: 30/hour per user — Spoonacular's free tier is ~150 pts/day,
+    // so this plus the 24h response cache is the quota-control valve
+    o.AddPolicy("recipes", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromHours(1),
+            PermitLimit = 30,
+        }));
 });
 
 var app = builder.Build();
@@ -208,6 +240,16 @@ else
 {
     app.Logger.LogWarning(
         "Email: logging to console only — set Resend:ApiKey (dotnet user-secrets) to enable delivery.");
+}
+
+if (recipesConfigured)
+{
+    app.Logger.LogInformation("Recipes: Spoonacular provider active.");
+}
+else
+{
+    app.Logger.LogWarning(
+        "Recipes: using StubRecipeService — set Spoonacular:ApiKey (dotnet user-secrets) to enable real recipe search.");
 }
 
 using (var scope = app.Services.CreateScope())

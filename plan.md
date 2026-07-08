@@ -272,6 +272,50 @@ Email is simpler than Web Push for MVP — no service worker, no browser permiss
 
 ---
 
+## Recipe Recommendations (Spoonacular) — built + live-verified 2026-07-07 (real API key)
+
+Implemented on the `recipeRecommendations` branch as specced below and live-verified end to end with the real Spoonacular key: startup log "Spoonacular provider active", real search from pantry ingredients (receipt-noise names normalized), real images in the 4-column grid, cache hit on repeat search (12ms, no quota spent), dead image URLs fall back to a placeholder. Gotcha from setup: the secret name is `Spoonacular:ApiKey` — it was initially saved as "Spoontacular" (extra t) and silently fell back to the stub; the startup log line is how you catch that.
+
+Users find recipes that use up what's already in their pantry — directly serving the food-waste mission (cook it before it expires).
+
+### API choice & key handling
+- Spoonacular `GET /recipes/findByIngredients` with params: `ingredients` (comma-separated), `number` (1–100, default 10), `ranking` (1 = maximize used ingredients, 2 = minimize missing ingredients), `ignorePantry` (bool — skip common pantry staples like water/salt/flour).
+- **All Spoonacular calls go through the .NET API, never the browser.** The key would be visible in the client bundle otherwise, and the free tier is only ~150 points/day (`findByIngredients` ≈ 1 point + 0.01/result), so the server is the cost-control point — same reasoning as the `/receipts/scan` rate limit.
+- Secret: `Spoonacular:ApiKey` via `dotnet user-secrets` in dev, env var on the VPS.
+
+### Backend (`BerryMindful.Services/RecipeServices/` — mirrors the `IReceiptScanner` seam)
+- `IRecipeProvider` — `FindByIngredientsAsync(ingredients, ranking, ignorePantry, number, ct)`.
+- `SpoonacularRecipeService` — typed `HttpClient` (registered via `AddHttpClient`), builds the query string, maps the JSON response to DTOs. Non-200 / timeout → caught and surfaced as a clean 502-style error DTO, not an unhandled 500.
+- `StubRecipeService` — no-key fallback returning canned recipes (matches the scanner/email startup-selection pattern; startup log line states which is active).
+- `RecipeSuggestionDto`: `Id, Title, ImageUrl, UsedIngredientCount, MissedIngredientCount, UsedIngredients[], MissedIngredients[], Likes` (Spoonacular's response shape, camel-cased through).
+- `RecipesController` [`/recipes`, Authorize]:
+  - `GET /recipes/by-ingredients?ingredients=a,b,c&ranking=1&ignorePantry=true&number=12` — validates ranking ∈ {1,2}, clamps number to 1–24 (no reason to allow 100), 400 on empty ingredients.
+- **Cost controls**: per-user rate limit (e.g. 30/hour, same mechanism as scan) + `IMemoryCache` keyed on the normalized request (lowercased, sorted ingredient list + ranking + ignorePantry + number), TTL ~24h — re-running the same search costs zero quota.
+- Ingredient normalization server-side before hitting Spoonacular: lowercase, trim, dedupe, strip size/brand noise tokens (e.g. "93/7", "3pk"). Pantry names come from receipts, so "Ground Beef 93/7" should be sent as "ground beef". Simple heuristics for MVP; a stored Claude-normalized ingredient name at scan time is a later upgrade.
+
+### Client
+- New protected route `/recipes` (lazy-loaded like Analytics), "Find Recipes" button in the Pantry page header nav.
+- `types/recipes.ts` + `hooks/useRecipes.ts` — `useQuery` keyed `["recipes", ingredients, ranking, ignorePantry]`, `enabled` only after the user applies filters (no fetch on page load), generous `staleTime` mirroring the server cache.
+- `RecipesPage`:
+  - **Filter button → modal**: checkbox list of distinct Active pantry item names (all checked by default, sorted soonest-expiry first with an "expiring soon" badge — nudges users toward at-risk items), two-choice radio (Maximize used ingredients / Minimize missing ingredients → ranking 1/2), "Ignore common pantry staples" checkbox (default true), Apply button.
+  - **Results**: responsive card grid (`display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))` — same responsive behavior as flex-wrap but with even rows), each card: image, title, used/missed ingredient count badges (green/amber), missed-ingredient names, likes.
+  - States: initial "select ingredients to search" empty state, loading skeleton, error with retry, no-results message.
+  - Last filter selections persisted to localStorage so the modal reopens with prior choices.
+
+### Later improvements (not MVP)
+- "View full recipe": `findByIngredients` returns no instructions/source URL. MVP deep-links to `https://spoonacular.com/recipes/{title-slug}-{id}`; proper version proxies `GET /recipes/{id}/information` (1 extra point) for `sourceUrl` + instructions.
+- "I cooked this" → bulk-mark the used ingredients as Used — closes the loop with the waste analytics dashboard.
+- Check Spoonacular ToS attribution requirements (image credit / backlink) before public deploy.
+
+### Verification
+1. No key → stub recipes returned, startup log says stub is active
+2. Real key → search from real pantry ingredients returns plausible recipes
+3. Ranking toggle demonstrably changes result ordering; ignorePantry changes results
+4. Identical repeat search served from cache (log line, no Spoonacular call); rate limit returns 429 past the cap
+5. Grid reflows correctly at mobile width; modal usable on mobile
+
+---
+
 ## Phasing
 
 ### Phase 1 — MVP (Core Loop)
@@ -286,6 +330,7 @@ Email is simpler than Web Push for MVP — no service worker, no browser permiss
 - Store detection from receipt header → store-tier shelf-life adjustments
 - Web Push notifications (service worker)
 - [x] Waste analytics dashboard (items tossed vs used over time) — built + live-verified 2026-07-07: `StatusChangedAt` column (backfilled from `UpdatedAt` for pre-existing rows), `GET /analytics/waste?days=30|90|0` (`WasteAnalyticsService`, in-memory weekly/category/most-tossed aggregation), client `/analytics` page (Recharts, lazy-loaded chunk; KPI tiles, weekly stacked bars, category bars, top-5 table). Note: deleted items are hard-deleted and vanish from analytics history (known limitation).
+- [x] Recipe recommendations from pantry ingredients (Spoonacular `findByIngredients` — see "Recipe Recommendations" section above; built + live-verified with the real key 2026-07-07 on `recipeRecommendations` branch)
 - Household sharing (invite by email, shared pantry view)
 - Barcode scanning (Open Food Facts API)
 - Category filters + search
