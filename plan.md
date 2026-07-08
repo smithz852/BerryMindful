@@ -4,7 +4,7 @@
 BerryMindful is a grocery tracking web app whose primary goal is reducing food waste. The core insight: most food spoils because people forget what they bought and when. The app solves this by making item entry nearly effortless via receipt scanning, then proactively alerting users as items approach their expiry window.
 
 ## Status (as of 2026-07-06)
-Phase 1 is **complete and fully live-verified** (2026-07-07): all three API keys set, Vision + Claude pipeline tested on real receipts (incl. purchase-date extraction), and the Resend expiry digest delivered + deduped for real. The forgot/reset-password flow is also implemented and live-verified end to end (2026-07-07, real emailed token → client reset page → login; note `zachsmith852@gmail.com` no longer uses the shared test password). The waste analytics dashboard (Phase 2) is built and live-verified (2026-07-07): new `PantryItems.StatusChangedAt` column + `/analytics/waste` endpoint + `/analytics` client page (Recharts). Next up: NotificationsController prefs endpoints, then the rest of Phase 2. Reminder: Resend's sandbox sender (`onboarding@resend.dev`) only delivers to the Resend account owner's address — verify a domain before emailing other users.
+Phase 1 is **complete and fully live-verified** (2026-07-07): all three API keys set, Vision + Claude pipeline tested on real receipts (incl. purchase-date extraction), and the Resend expiry digest delivered + deduped for real. The forgot/reset-password flow is also implemented and live-verified end to end (2026-07-07, real emailed token → client reset page → login; note `zachsmith852@gmail.com` no longer uses the shared test password). The waste analytics dashboard (Phase 2) is built and live-verified (2026-07-07): new `PantryItems.StatusChangedAt` column + `/analytics/waste` endpoint + `/analytics` client page (Recharts). Next up (per the 2026-07-07 assessment): the user staples list for recipe relevance (own branch — see the action item in the Recipe Recommendations section) and NotificationsController prefs endpoints, then the rest of the Phase 2 queue. Reminder: Resend's sandbox sender (`onboarding@resend.dev`) only delivers to the Resend account owner's address — verify a domain before emailing other users.
 
 Dev quickstart:
 - API: `dotnet run --launch-profile https` from `server/BerryMindful.Api` → https://localhost:7068 (MySQL runs as the local `MySQL83` Windows service; connection string is in user-secrets)
@@ -302,9 +302,19 @@ Users find recipes that use up what's already in their pantry — directly servi
   - States: initial "select ingredients to search" empty state, loading skeleton, error with retry, no-results message.
   - Last filter selections persisted to localStorage so the modal reopens with prior choices.
 
+### Action item — user staples list (next recipe branch, e.g. `recipeStaples`)
+Problem (assessed 2026-07-07): the pantry only contains receipt-scanned items, so ingredients most households always have (onion, garlic, butter, eggs, oil) show up as "missing" in every search. ranking=2 then biases toward trivially simple recipes, and ranking=1 shows intimidating missed-ingredient counts. Spoonacular's `ignorePantry` only covers its own narrow staples list (water/salt/flour) — it doesn't fix this. It's a relevance problem with the search *input*, not a reason to switch APIs.
+
+Plan:
+- **Storage**: `UserStaples` table (UserId FK + ingredient name), seeded from a default checklist (onion, garlic, butter, eggs, cooking oil, flour, sugar, salt/pepper/common spices) on first use.
+- **UI**: manage staples from the Recipes filter modal (or a small settings panel) — add/remove, defaults pre-checked.
+- **Server**: `RecipesController` merges staples into the ingredient list (normalized + deduped like pantry names) before calling Spoonacular; the cache key already hashes the final ingredient list so no cache changes needed.
+- **Results UX**: distinguish "missing, but it's a common staple" from "genuinely missing" on cards; frame genuinely-missing ingredients as "add to shopping list" hooks rather than failures.
+- Cost note: Spoonacular free tier (~150 pts/day, ~1.12 pts per 12-result search) is fine at current scale given the 24h cache + rate limit. If it ever becomes a real cost, the escape hatch is a Claude-generated `IRecipeProvider` (Haiku, pennies, naturally assumes staples, prioritizes expiring items — no photos/source links) — a swap behind the existing seam, not a rebuild. Not now.
+
 ### Later improvements (not MVP)
 - "View full recipe": `findByIngredients` returns no instructions/source URL. MVP deep-links to `https://spoonacular.com/recipes/{title-slug}-{id}`; proper version proxies `GET /recipes/{id}/information` (1 extra point) for `sourceUrl` + instructions.
-- "I cooked this" → bulk-mark the used ingredients as Used — closes the loop with the waste analytics dashboard.
+- "I cooked this" → bulk-mark the used ingredients as Used — closes the loop with the waste analytics dashboard. (Also listed in the Phase 2 future-ideas queue.)
 - Check Spoonacular ToS attribution requirements (image credit / backlink) before public deploy.
 
 ### Verification
@@ -327,14 +337,17 @@ Users find recipes that use up what's already in their pantry — directly servi
 - [x] Daily email notification digest — via shared ZlEmailProvider lib (Resend); live delivery + dedupe verified 2026-07-07
 
 ### Phase 2 — Growth Features
-- Store detection from receipt header → store-tier shelf-life adjustments
-- Web Push notifications (service worker)
 - [x] Waste analytics dashboard (items tossed vs used over time) — built + live-verified 2026-07-07: `StatusChangedAt` column (backfilled from `UpdatedAt` for pre-existing rows), `GET /analytics/waste?days=30|90|0` (`WasteAnalyticsService`, in-memory weekly/category/most-tossed aggregation), client `/analytics` page (Recharts, lazy-loaded chunk; KPI tiles, weekly stacked bars, category bars, top-5 table). Note: deleted items are hard-deleted and vanish from analytics history (known limitation).
 - [x] Recipe recommendations from pantry ingredients (Spoonacular `findByIngredients` — see "Recipe Recommendations" section above; built + live-verified with the real key 2026-07-07 on `recipeRecommendations` branch)
-- Household sharing (invite by email, shared pantry view)
-- Barcode scanning (Open Food Facts API)
-- Category filters + search
-- Per-item custom shelf-life override
+
+**Queued (prioritized 2026-07-07 assessment):**
+- [ ] User staples list for recipe relevance — own branch; see "Action item — user staples list" in the Recipe Recommendations section
+- [ ] NotificationsController prefs endpoints (already flagged as next in Status)
+- [ ] "I cooked this" → bulk-mark used ingredients as Used — closes the recipe → pantry → waste-analytics loop
+- [ ] Category filters + search on the pantry page
+- [ ] Per-item custom shelf-life override
+
+**Deferred — thinking about, not scheduled:** household sharing (invite by email, shared pantry view), barcode scanning (Open Food Facts API), Web Push notifications (service worker), store detection from receipt header → store-tier shelf-life adjustments.
 
 ---
 
