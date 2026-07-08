@@ -87,6 +87,9 @@ export function PantryPage() {
         <Link to="/pantry/add" className="button-link">
           + Add item
         </Link>
+        <Link to="/recipes" className="button-link">
+          🍳 Recipes
+        </Link>
         <Link to="/analytics" className="button-link">
           📊 Analytics
         </Link>

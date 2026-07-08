@@ -50,6 +50,7 @@
 
 .pantry-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin: 1rem 0;
 }
@@ -284,6 +285,195 @@ button.primary {
 .most-tossed th {
   font-size: 0.8rem;
   opacity: 0.75;
+}
+
+.recipes {
+  /* #root is a flex column and main's `margin: 0 auto` makes it shrink-to-fit,
+     so the auto-fill grid needs an explicit width to earn its columns. */
+  width: 100%;
+  max-width: 56rem;
+  box-sizing: border-box;
+}
+
+.recipes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.recipes-summary {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.recipe-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.recipe-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.08);
+  overflow: hidden;
+  text-align: left;
+}
+
+.recipe-card img,
+.recipe-image-placeholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.recipe-image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.25rem;
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.recipe-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+}
+
+.recipe-body h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.recipe-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.badge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.badge-used {
+  background: rgba(39, 174, 96, 0.15);
+  color: #27ae60;
+}
+
+.badge-missed {
+  background: rgba(243, 156, 18, 0.15);
+  color: #b9770e;
+}
+
+.badge-expiring {
+  background: rgba(192, 57, 43, 0.15);
+  color: #c0392b;
+  margin-left: 0.4rem;
+}
+
+.recipe-missing {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.recipe-footer {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 10;
+}
+
+.modal {
+  background: var(--bg);
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 10px;
+  padding: 1.25rem;
+  width: 100%;
+  max-width: 26rem;
+  max-height: 85vh;
+  overflow-y: auto;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.modal h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+}
+
+.modal-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-section-header button {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.ingredient-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0 0;
+  max-height: 13rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ingredient-list label,
+.modal-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.modal-choice {
+  margin-bottom: 0.3rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .admin-actions {
